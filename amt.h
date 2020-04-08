@@ -18,34 +18,15 @@
 extern "C" {
 #endif
     
-#define _GNU_SOURCE
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <unistd.h>
+//c99 uintptr_t
 #include <stdint.h>
-    
 
-    typedef struct AMTEntry {
-        uintptr_t user_key;
-        uintptr_t user_data;
-    } AMTEntry;
+    //Hide internals
+    typedef struct AMT AMT;
 
-    typedef struct AMTNode {
-        uintptr_t BitMap_or_Key; /* 32 bits, bitmap or 32-64bit key */
-        uintptr_t Base_or_Value; /* piner to AMTNode list or AMTEntry */
-    } AMTNode;
-
-    typedef struct AMT {
-        AMTNode *root;
-    } AMT;
-
-
-    uintptr_t AMT_insert(AMT *hamt, uintptr_t new_key);
-    uintptr_t AMT_get(AMT *hamt, uintptr_t r_key);
-    AMT * AMT_create();
+    void* AMT_insert(AMT *hamt, uintptr_t new_key);
+    void* AMT_get(AMT *hamt, uintptr_t r_key);
+    AMT * AMT_init();
     
     void AMT_print(AMT *hamt);
 

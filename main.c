@@ -39,7 +39,7 @@ uint64_t cycles_in_one_usec=0;
 
 void PRINT_STAT(const char *name, uint64_t *time_S, uint64_t *time_E, uint64_t *time_Dif, uint64_t cnt);
 //void printKeyValue( gpointer key, gpointer value, gpointer userData );
-#define NN 20000000
+#define NN 2000000
 
 
 
@@ -70,8 +70,9 @@ int main(int argc, char** argv) {
     /*GHashTable *GHT1 = g_hash_table_new (g_int64_hash, g_int64_equal);
     GHashTable *GHT2 = g_hash_table_new (g_int64_hash, g_int64_equal);*/
 
-    AMT *H_random = AMT_create(sizeof(uint32_t));
-    AMT *H_linear = AMT_create(sizeof(uint32_t));
+    AMT *H_random = AMT_init(sizeof(uint32_t));
+    AMT *H_linear = AMT_init(sizeof(uint32_t));
+    
     
     
     
@@ -94,8 +95,8 @@ int main(int argc, char** argv) {
     for(Word_t i=0;i<NN;i++){
         //data_random[i]=integerHash32(NN-i+1);//rand()%1000000+1;
         //data_random[i]=(i+1);//rand()%1000000+1;
-        data_random[i]=rand()%10000000+1;
-        data_linear[i]=  i+1;
+        //data_random[i]=rand()%10000000+1;
+        data_random[i]=  i+1;
     }
   
     
@@ -110,11 +111,13 @@ int main(int argc, char** argv) {
     
     
     
-    AMT *H_00 = AMT_create(sizeof(uint64_t));    
+    AMT *H_00 = AMT_init(sizeof(uint64_t));    
     cnt=0;
     for(Word_t i=0;i<NN;i++){
         Word_t d = data_random[i];
-        d<<=32;
+        //d|=d<<32;
+        //d=integerHash64(d);
+        
     RDTSCP(start);
   
     PValue = (Word_t*)AMT_insert(H_00,d);
@@ -139,9 +142,12 @@ int main(int argc, char** argv) {
     cnt=0;
     for(Word_t i=0;i<NN;i++){
         Word_t d = data_random[i];
+         //d|=d<<32;
+        //d=integerHash64(d);        
+        
     RDTSCP(start);
     JLI(PValue, PJLArray1, d);
-        d<<=32;
+        
     if(*PValue == d){
         cnt+=1;
     }else{
@@ -585,7 +591,14 @@ void PRINT_STAT(const char *name, uint64_t *time_S, uint64_t *time_E, uint64_t *
 
 
 
-
+uint64_t integerHash64(uint64_t k){
+	k ^= k >> 33;
+	k *= 0xff51afd7ed558ccdLLU;
+	k ^= k >> 33;
+	k *= 0xc4ceb9fe1a85ec53LLU;
+	k ^= k >> 33;
+return k;
+}
 
 
 uint32_t integerHash32(uint32_t h)

@@ -4,6 +4,14 @@
  * and open the template in the editor.
  */
 
+/*
+ * native POPCNT or software almost does not matter!
+ * diffirenc in several nanoseconds
+ * most havy malloc and array indexing
+ * __builtin_popcount normaly converts to several instructions (just like CPop fun) but not popcnt nativ cpu instcurtion
+ * to fix it add -mpopcnt to compiller (or -mavx or -msse4 or -msse4.2)
+ * disassembling and testing on intel and gcc6.3
+ */
 
 /* ABOUT
  * inspired by YASM HAMT
@@ -137,6 +145,13 @@ MIN:   41, P01:   98, P25:  180, P50: [[  205, ]] P75:  254, P99:  1571, MAX: 48
  *  
  *  * 
  *  */
+#define _GNU_SOURCE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+#include <unistd.h>
 
 #include "amt.h"
 
@@ -151,6 +166,7 @@ MIN:   41, P01:   98, P25:  180, P50: [[  205, ]] P75:  254, P99:  1571, MAX: 48
 #endif
 
 // +/- 1 nanosecond. emu slowly or same
+//for __builtin_popcount add -mpopcnt to compiller (or -mavx or -msse4 or -msse4.2)
 #ifdef CTPOP_EMULATION
 #define CTPOP(v) CTPop( (uint32_t)v  )
 #else
@@ -171,6 +187,19 @@ MIN:   41, P01:   98, P25:  180, P50: [[  205, ]] P75:  254, P99:  1571, MAX: 48
 //platform dependant!!
 #define keypartbits_limit  ( (sizeof(uintptr_t)*8) -1 )
     
+typedef struct AMTEntry {
+    uintptr_t user_key;
+    uintptr_t user_data;
+} AMTEntry;
+
+typedef struct AMTNode {
+    uintptr_t BitMap_or_Key; /* 32 bits, bitmap or 32-64bit key */
+    uintptr_t Base_or_Value; /* piner to AMTNode list or AMTEntry */
+} AMTNode;
+
+typedef struct AMT {
+    AMTNode *root;
+} AMT;
 
 inline static uint32_t CTPop(uint32_t Map) __attribute__ ((always_inline));
 static int AMT_print_traverse_down(AMTNode *node, int offset);
@@ -195,9 +224,7 @@ static int AMT_print_traverse_down(AMTNode *node, int offset);
 #endif
 
 
-AMT * AMT_create()
-{
-    
+AMT * AMT_init(){
     
     AMT *hamt = calloc(1,sizeof(AMT));
     
@@ -206,14 +233,14 @@ AMT * AMT_create()
     return hamt;
 }
 
-uintptr_t AMT_insert(AMT *hamt, uintptr_t new_key){
+void* AMT_insert(AMT *hamt, uintptr_t new_key){
    
     
-    AMTNode *node __attribute__ ((aligned(sizeof(uintptr_t))));
+    AMTNode *node     __attribute__ ((aligned(sizeof(uintptr_t))));
     AMTNode *newnodes __attribute__ ((aligned(sizeof(uintptr_t))));
-    AMTEntry *entry __attribute__ ((aligned(sizeof(uintptr_t))));
+    AMTEntry *entry   __attribute__ ((aligned(sizeof(uintptr_t))));
     
-    uintptr_t key __attribute__ ((aligned(sizeof(uintptr_t))));
+    uintptr_t key     __attribute__ ((aligned(sizeof(uintptr_t))));
     uint32_t keypart;
     uint32_t Map;
     int32_t keypartbits = 1;
@@ -238,7 +265,7 @@ uintptr_t AMT_insert(AMT *hamt, uintptr_t new_key){
         SetAsValue(node->Base_or_Value,entry);
         
         //return addr to store user data
-        return (uintptr_t)&(entry->user_data);
+        return &(entry->user_data);
     }
 
     for (;;) {
@@ -250,7 +277,7 @@ uintptr_t AMT_insert(AMT *hamt, uintptr_t new_key){
                     ) {
 
                 //return addr whith existing user data
-                return (uintptr_t)&( ((AMTEntry *)(node->Base_or_Value))->user_data );
+                return &( ((AMTEntry *)(node->Base_or_Value))->user_data );
             } 
             
             else {
@@ -321,7 +348,7 @@ uintptr_t AMT_insert(AMT *hamt, uintptr_t new_key){
                         node->BitMap_or_Key = (1UL<<keypart) | (1UL<<keypart2);
                         SetAsBase(node->Base_or_Value, newnodes);
                         
-                        return (uintptr_t)&(  entry->user_data  );
+                        return &(  entry->user_data  );
                     }
                 }
             }
@@ -378,7 +405,7 @@ uintptr_t AMT_insert(AMT *hamt, uintptr_t new_key){
             SetAsValue((&newnodes[Map])->Base_or_Value, entry);
             SetAsBase(node->Base_or_Value, newnodes);
 
-            return (uintptr_t)&( entry->user_data );
+            return &( entry->user_data );
         }
         
         //keypart bit present in bitmap - jump to next node
@@ -393,7 +420,7 @@ uintptr_t AMT_insert(AMT *hamt, uintptr_t new_key){
 }
 
 
-uintptr_t AMT_get(AMT *hamt, uintptr_t r_key){
+void * AMT_get(AMT *hamt, uintptr_t r_key){
 
     AMTNode *node     __attribute__ ((aligned(sizeof(uintptr_t))));
     AMTNode *newnodes __attribute__ ((aligned(sizeof(uintptr_t))));
@@ -412,7 +439,7 @@ uintptr_t AMT_get(AMT *hamt, uintptr_t r_key){
 
     //root slot empty
     if (node->Base_or_Value == 0)
-        return (uintptr_t)0;
+        return NULL;
 
     
     for (;;) {
@@ -421,9 +448,9 @@ uintptr_t AMT_get(AMT *hamt, uintptr_t r_key){
                 && ((AMTEntry *)(node->Base_or_Value))->user_key == r_key
                     
                     )
-                return (uintptr_t)& (   ((AMTEntry *)(node->Base_or_Value))->user_data);
+                return & (   ((AMTEntry *)(node->Base_or_Value))->user_data);
             else
-                return (uintptr_t)0;
+                return NULL;
         }
 
         /* Subtree: look up in bitmap */
@@ -439,7 +466,7 @@ uintptr_t AMT_get(AMT *hamt, uintptr_t r_key){
         uint32_t bit = 1UL<<keypart;
 
         if (!(node->BitMap_or_Key & (bit))) 
-            return (uintptr_t)0;
+            return NULL;
         
         
         Map = CTPOP(node->BitMap_or_Key & ~((~0ULL)<<keypart));
@@ -459,6 +486,8 @@ uintptr_t AMT_get(AMT *hamt, uintptr_t r_key){
 #define S_KF0 0xF0F0F0FU
 #define S_KFF 0xFF00FFU
 
+//ACHTUNG!!! __builtin_popcount converted to CTPop by GCC
+//to use native INTEL popcnt add -mpopcnt to compiller (or -mavx or -msse4 or -msse4.2)
 //10 nano __builtin_popcount
 //13 this inline func
 static inline uint32_t CTPop(uint32_t Map)
@@ -532,7 +561,122 @@ static uint64_t integerHash64(uint64_t k){
 return k;
 }
 
+uint32_t crc32cHardware32(uint32_t crc, const void* data, size_t length) {
+    //function source from https://github.com/htot/crc32c/blob/master/crc32c/crc32c.cc
+    //ACHTUNG   CRC32C is not CRC32  !!!
+    
+    //ARM C Language Extensions PDF
+    //arm __crc32cw(crc64bit, *(uint32_t*) p_buf);
+    //#include<arm_acle.h>
+    //if defined __ARM_FEATURE_CRC32 then all right
+    //gcc -o crc -std=c99 -march=armv8-a+crc -mfpu=crypto-neon-fp-armv8 crc.c
+    //для crc32 важна march
+    //и это crc32{C} - она отличается от того что называют crc32
+    //__crc32cb  char8
+    //__crc32ch  short16
+    //__crc32cw  int32
+    //__crc32cd  int64
+    
+    //врамках проекта zLib есть функция crc32()
+    //работает не сильно медленнее (раза в два)
+    //можно делать фоллбэк
 
+    //INEL ONLY 
+    //gcc -mcrc32
+    //__builtin_ia32_crc32di int64
+    //__builtin_ia32_crc32si int32
+    //__builtin_ia32_crc32qi char8
+    //__builtin_ia32_crc32hi short16
+    
+    
+    const char* p_buf = (const char*) data;
+    // alignment doesn't seem to help?
+    for (size_t i = 0; i < length / sizeof(uint32_t); i++) {
+        //crc = __builtin_ia32_crc32si(crc, *(uint32_t*) p_buf);
+        p_buf += sizeof(uint32_t);
+    }
+
+    // This ugly switch is slightly faster for short strings than the straightforward loop
+    length &= sizeof(uint32_t) - 1;
+    /*
+    while (length > 0) {
+        crc32bit = __builtin_ia32_crc32qi(crc32bit, *p_buf++);
+        length--;
+    }
+    */
+    switch (length) {
+        case 3:
+            //crc = __builtin_ia32_crc32qi(crc, *p_buf++);
+        case 2:
+            //crc = __builtin_ia32_crc32hi(crc, *(uint16_t*) p_buf);
+            break;
+        case 1:
+            //crc = __builtin_ia32_crc32qi(crc, *p_buf);
+            break;
+        case 0:
+            break;
+        default:
+            assert(0);
+    }
+
+    return crc;
+}
+uint32_t crc32cHardware64(uint32_t crc, const char *p_buf,size_t length) {
+
+    //math done platform indep by uintptr_t
+    //MACRO for intrinsics choose?
+    //but __builtin_ia32_crc32di for 64bit
+    //and __builtin_ia32_crc32si from 32bit
+    
+    //size_t length = strlen(p_buf);
+    
+    // alignment doesn't seem to help?
+    uintptr_t crc64bit = crc;
+    for (size_t i = 0; i < length / sizeof(uintptr_t); i++) {
+        //crc64bit = __builtin_ia32_crc32di(crc64bit, *(uintptr_t*) p_buf);
+        p_buf += sizeof(uintptr_t);
+    }
+
+    // This ugly switch is slightly faster for short strings than the straightforward loop
+    uint32_t crc32bit = (uint32_t) crc64bit;
+    length &= sizeof(uintptr_t) - 1;
+    /*
+    while (length > 0) {
+        crc32bit = __builtin_ia32_crc32qi(crc32bit, *p_buf++);
+        length--;
+    }
+    */
+    switch (length) {
+        case 7:
+            //crc32bit = __builtin_ia32_crc32qi(crc32bit, *p_buf++);
+        case 6:
+            //crc32bit = __builtin_ia32_crc32hi(crc32bit, *(uint16_t*) p_buf);
+            p_buf += 2;
+        // case 5 is below: 4 + 1
+        case 4:
+            //crc32bit = __builtin_ia32_crc32si(crc32bit, *(uint32_t*) p_buf);
+            break;
+        case 3:
+            //crc32bit = __builtin_ia32_crc32qi(crc32bit, *p_buf++);
+        case 2:
+            //crc32bit = __builtin_ia32_crc32hi(crc32bit, *(uint16_t*) p_buf);
+            break;
+        case 5:
+            //crc32bit = __builtin_ia32_crc32si(crc32bit, *(uint32_t*) p_buf);
+            p_buf += 4;
+        case 1:
+            //crc32bit = __builtin_ia32_crc32qi(crc32bit, *p_buf);
+            break;
+        case 0:
+            break;
+        default:
+            // This should never happen; enable in debug code
+            assert(0);
+    }
+
+    return crc32bit;
+
+}
 /**** PRINT ******************************************************************/
 
 
